@@ -1,0 +1,43 @@
+{
+  "summary": "Backend-only testing of new ERP integration (X-API-Key) endpoints + license options (annual/semi-annual). Created /app/backend/tests/test_erp.py with 21 tests covering: GET/POST /api/company/api-key (get + regenerate, rotation invalidates old key, role gate), X-API-Key auth on /api/erp/* (missing header=401, invalid key=401, deactivated company=403), GET /api/erp/ping happy path, POST /api/erp/products/bulk create-then-upsert-by-external_id (verified created=2/updated=0 first pass, created=0/updated=2 second pass with values actually updated in GET /api/erp/products), GET /api/erp/orders with and without status=placed filter, PATCH /api/erp/orders/{id}/status update (+ 404 on unknown id), license_days=365 (annual) at company creation, license renewal add_days=180 and add_days=365. Regression: existing /app/backend/tests/backend_test.py still 29/29 PASS. Total: 50/50 tests passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/company/api-key", "issue": "Uses Mongo projection {\"_id\": 0, \"api_key\": 1} which mixes inclusion and exclusion. It works because MongoDB tolerates the _id exclusion with inclusions, but it's better style to use only {\"api_key\": 1} (Mongo will implicitly return _id, then rely on returning just {'api_key': ...}). Not a bug — response is correct."},
+      {"endpoint": "POST /api/erp/products/bulk", "issue": "Products without external_id are always inserted (no dedupe possible) — expected per spec, but consider validating name uniqueness or documenting to callers."},
+      {"endpoint": "GET /api/erp/ping", "issue": "License expiration check inside erp_company() silently ignores unparseable license_expires_at (bare except: pass). If a bad ISO string sneaks in, the request passes; low risk since all writes use isoformat()."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_erp.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_erp.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: tighten projection in GET /api/company/api-key to remove _id exclusion + inclusion mix (cosmetic).",
+    "Optional: expose /api/erp/products/bulk response with per-item status (created/updated flag) for easier ERP-side reconciliation."
+  ],
+  "critical_code_review_comments": [
+    "erp_company() correctly enforces 401 (missing header), 401 (invalid key), 403 (deactivated), 403 (expired license). Order of checks is safe.",
+    "POST /api/company/api-key/regenerate rotates key atomically via $set; old key immediately fails auth on /erp/* — verified.",
+    "erp_bulk_products upsert path is correct: matches on (company_id, external_id) then updates by id; if no external_id or no match, inserts a new doc with new uuid. Compound index products(company_id, external_id) is created on startup — good for scale.",
+    "license_days is a plain int on CompanyCreate (default 30). 30/90/180/365 all accepted (no validation of allowed values). Consider a Literal[30, 90, 180, 365] if you want to lock it to the four plans.",
+    "erp_company license-expiration bare 'except Exception: pass' would silently allow bad ISO strings; consider treating parse-fail as invalid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_erp.py (created)"
+  ],
+  "success_rate": {"backend": "100% (50/50: 21 new ERP + 29 regression)", "frontend": "N/A (not requested)"},
+  "seed_data_creation": "Tests create TEST_-prefixed companies (2), owner users (2), a customer, external-id products (2 upserted), and 1 order. All cleaned up in test_cleanup_delete_erp_companies which cascades users/products; the regression suite also self-cleans its own artifacts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Two independent suites: /app/backend/tests/backend_test.py (core auth/CRUD, 29 tests) and /app/backend/tests/test_erp.py (ERP + api-key + license options, 21 tests). Both idempotent and self-cleaning. Run with `pytest /app/backend/tests/ -v`. BASE_URL from EXPO_PUBLIC_BACKEND_URL. Super admin: admin@delivery.com / Admin@12345.",
+  "rca_of_issue": "No issues found — all new ERP endpoints and license options behave per spec, including negative auth cases and upsert semantics."
+}

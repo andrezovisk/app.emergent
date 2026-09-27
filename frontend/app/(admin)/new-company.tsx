@@ -8,9 +8,10 @@ import { api } from "@/src/api";
 
 const SEGMENTS = ["food", "market", "pharmacy", "drinks", "other"];
 const PLANS: { key: "basic" | "pro" | "premium"; label: string; days: number }[] = [
-  { key: "basic", label: "Básico (30d)", days: 30 },
-  { key: "pro", label: "Pro (60d)", days: 60 },
-  { key: "premium", label: "Premium (90d)", days: 90 },
+  { key: "basic", label: "Mensal (30d)", days: 30 },
+  { key: "pro", label: "Trimestral (90d)", days: 90 },
+  { key: "pro", label: "Semestral (180d)", days: 180 },
+  { key: "premium", label: "Anual (365d)", days: 365 },
 ];
 
 export default function NewCompany() {
@@ -103,16 +104,19 @@ export default function NewCompany() {
         <View style={styles.divider} />
         <Text style={styles.section}>Plano / Licença</Text>
         <View style={styles.chipRow}>
-          {PLANS.map((p) => (
-            <Pressable
-              key={p.key}
-              testID={`plan-${p.key}`}
-              onPress={() => setF((prev) => ({ ...prev, plan: p.key, license_days: p.days }))}
-              style={[styles.planChip, f.plan === p.key && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, f.plan === p.key && styles.chipTextActive]}>{p.label}</Text>
-            </Pressable>
-          ))}
+          {PLANS.map((p) => {
+            const selected = f.plan === p.key && f.license_days === p.days;
+            return (
+              <Pressable
+                key={`${p.key}-${p.days}`}
+                testID={`plan-${p.days}`}
+                onPress={() => setF((prev) => ({ ...prev, plan: p.key, license_days: p.days }))}
+                style={[styles.planChip, selected && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, selected && styles.chipTextActive]}>{p.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {error && <Text style={styles.error}>{error}</Text>}

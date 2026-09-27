@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import secrets as pysecrets
 import jwt
 import bcrypt
 import asyncio
@@ -13,6 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 from datetime import datetime, timezone, timedelta
+from fastapi import Header
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -110,7 +112,7 @@ class CompanyCreate(BaseModel):
     owner_name: str
     # license
     plan: PlanTier = "basic"
-    license_days: int = 30
+    license_days: int = 30  # 30/90/180/365 = mensal/trimestral/semestral/anual
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
@@ -268,6 +270,7 @@ async def create_company(body: CompanyCreate, user=Depends(allow("super_admin"))
         "plan": body.plan,
         "license_expires_at": license_expires.isoformat(),
         "active": True,
+        "api_key": "ck_" + pysecrets.token_urlsafe(28),
         "created_at": now().isoformat(),
     }
     await db.companies.insert_one(dict(company))
@@ -460,6 +463,105 @@ async def my_orders(user=Depends(allow("customer"))):
     items = await db.orders.find({"customer_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 
+# ---------- routes: company api-key ----------
+@api.get("/company/api-key")
+async def company_get_api_key(user=Depends(allow("company"))):
+    c = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0, "api_key": 1})
+    if not c:
+        raise HTTPException(404, "Empresa não encontrada")
+    return {"api_key": c.get("api_key")}
+
+@api.post("/company/api-key/regenerate")
+async def company_regen_api_key(user=Depends(allow("company"))):
+    new_key = "ck_" + pysecrets.token_urlsafe(28)
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": {"api_key": new_key}})
+    return {"api_key": new_key}
+
+# ---------- routes: ERP integration (X-API-Key auth) ----------
+async def erp_company(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
+    if not x_api_key:
+        raise HTTPException(401, "X-API-Key header ausente")
+    c = await db.companies.find_one({"api_key": x_api_key}, {"_id": 0})
+    if not c:
+        raise HTTPException(401, "API key inválida")
+    if not c.get("active", True):
+        raise HTTPException(403, "Empresa desativada")
+    exp = c.get("license_expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < now():
+                raise HTTPException(403, "Licença expirada")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    return c
+
+class ErpProductIn(BaseModel):
+    external_id: Optional[str] = None  # id do ERP para upsert
+    name: str
+    description: Optional[str] = ""
+    price: float
+    category: str = "Geral"
+    image: Optional[str] = None
+    active: bool = True
+
+@api.get("/erp/ping")
+async def erp_ping(c=Depends(erp_company)):
+    return {"ok": True, "company": c["name"], "company_id": c["id"]}
+
+@api.get("/erp/products")
+async def erp_list_products(c=Depends(erp_company)):
+    items = await db.products.find({"company_id": c["id"]}, {"_id": 0}).to_list(2000)
+    return items
+
+@api.post("/erp/products/bulk")
+async def erp_bulk_products(products: List[ErpProductIn], c=Depends(erp_company)):
+    """Envie uma lista de produtos do seu ERP. Se external_id existir, atualiza; senão cria."""
+    created, updated = 0, 0
+    for p in products:
+        base = {
+            "name": p.name,
+            "description": p.description or "",
+            "price": p.price,
+            "category": p.category,
+            "image": p.image,
+            "active": p.active,
+            "company_id": c["id"],
+            "external_id": p.external_id,
+        }
+        if p.external_id:
+            existing = await db.products.find_one({"company_id": c["id"], "external_id": p.external_id})
+            if existing:
+                await db.products.update_one({"id": existing["id"]}, {"$set": base})
+                updated += 1
+                continue
+        base["id"] = str(uuid.uuid4())
+        base["created_at"] = now().isoformat()
+        await db.products.insert_one(dict(base))
+        created += 1
+    return {"created": created, "updated": updated, "total": created + updated}
+
+@api.get("/erp/orders")
+async def erp_list_orders(status: Optional[str] = None, since: Optional[str] = None, c=Depends(erp_company)):
+    q: dict = {"company_id": c["id"]}
+    if status:
+        q["status"] = status
+    if since:
+        q["created_at"] = {"$gte": since}
+    items = await db.orders.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return items
+
+class ErpOrderStatus(BaseModel):
+    status: OrderStatus
+
+@api.patch("/erp/orders/{order_id}/status")
+async def erp_update_order_status(order_id: str, body: ErpOrderStatus, c=Depends(erp_company)):
+    r = await db.orders.update_one({"id": order_id, "company_id": c["id"]}, {"$set": {"status": body.status}})
+    if not r.matched_count:
+        raise HTTPException(404, "Pedido não encontrado")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
 # ---------- app ----------
 app.include_router(api)
 
@@ -494,6 +596,11 @@ async def startup():
         }
         await db.users.insert_one(admin)
         log.info(f"Seeded super admin: {ADMIN_EMAIL}")
+    # Backfill api_key for existing companies
+    async for comp in db.companies.find({"api_key": {"$in": [None, ""]}}, {"id": 1}):
+        await db.companies.update_one({"id": comp["id"]}, {"$set": {"api_key": "ck_" + pysecrets.token_urlsafe(28)}})
+    await db.companies.create_index("api_key")
+    await db.products.create_index([("company_id", 1), ("external_id", 1)])
 
 @app.on_event("shutdown")
 async def shutdown():

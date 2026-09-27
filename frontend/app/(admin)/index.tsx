@@ -61,6 +61,9 @@ export default function AdminHome() {
           <Text style={styles.hello}>Olá, {user?.name || "Admin"}</Text>
           <Text style={styles.title}>Painel Admin</Text>
         </View>
+        <Pressable testID="manual-btn" onPress={() => router.push("/manual?role=admin" as any)} style={styles.iconBtn} hitSlop={12}>
+          <Ionicons name="help-circle-outline" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="logout-btn" onPress={logout} style={styles.iconBtn} hitSlop={12}>
           <Ionicons name="log-out-outline" size={22} color={colors.onSurface} />
         </Pressable>

@@ -27,7 +27,7 @@ export default function Onboarding() {
             <View style={styles.logoBadge}>
               <Ionicons name="bicycle" size={22} color={colors.onBrandPrimary} />
             </View>
-            <Text style={styles.brandText}>DeliveryHub</Text>
+            <Text style={styles.brandText}>Consumidor</Text>
           </View>
           <Text style={styles.tagline}>Peça de qualquer lugar,{"\n"}direto pelo WhatsApp</Text>
         </View>
@@ -79,6 +79,16 @@ export default function Onboarding() {
             </View>
             <Ionicons name="chevron-forward" size={22} color="#FFF" />
           </Pressable>
+
+          <Pressable
+            testID="open-manual-btn"
+            onPress={() => router.push("/manual?role=customer" as any)}
+            style={styles.manualLink}
+            hitSlop={12}
+          >
+            <Ionicons name="book-outline" size={16} color="#FFF" />
+            <Text style={styles.manualLinkText}>Primeira vez? Abrir manual de uso</Text>
+          </Pressable>
         </View>
       </View>
     </View>
@@ -106,4 +116,6 @@ const styles = StyleSheet.create({
   },
   roleTitle: { fontSize: 17, fontWeight: "700", color: "#FFF" },
   roleSub: { fontSize: 13, color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  manualLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: spacing.md, paddingVertical: spacing.sm },
+  manualLinkText: { color: "#FFF", fontSize: 14, fontWeight: "600", textDecorationLine: "underline" },
 });

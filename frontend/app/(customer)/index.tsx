@@ -49,6 +49,9 @@ export default function CustomerHome() {
           <Text style={styles.hello}>Olá, {user?.name?.split(" ")[0]}</Text>
           <Text style={styles.title}>O que vai pedir hoje?</Text>
         </View>
+        <Pressable testID="manual-btn" onPress={() => router.push("/manual?role=customer" as any)} style={styles.iconBtn} hitSlop={12}>
+          <Ionicons name="help-circle-outline" size={22} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="orders-btn" onPress={() => router.push("/(customer)/orders" as any)} style={styles.iconBtn} hitSlop={12}>
           <Ionicons name="receipt-outline" size={22} color={colors.onSurface} />
         </Pressable>

@@ -59,6 +59,12 @@ export default function CompanyHome() {
           <Text style={styles.hello}>Bem-vindo</Text>
           <Text style={styles.title}>{me?.name}</Text>
         </View>
+        <Pressable testID="manual-btn" onPress={() => router.push("/manual?role=company" as any)} style={styles.iconBtn} hitSlop={12}>
+          <Ionicons name="help-circle-outline" size={22} color={colors.onSurface} />
+        </Pressable>
+        <Pressable testID="erp-btn" onPress={() => router.push("/(company)/erp" as any)} style={styles.iconBtn} hitSlop={12}>
+          <Ionicons name="code-slash" size={20} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="logout-btn" onPress={logout} style={styles.iconBtn} hitSlop={12}>
           <Ionicons name="log-out-outline" size={22} color={colors.onSurface} />
         </Pressable>

@@ -95,9 +95,10 @@ export default function CompanyDetail() {
 
           <Text style={[styles.cardTitle, { marginTop: spacing.md, fontSize: 13 }]}>Renovar / Alterar plano</Text>
           <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-            <Pressable testID="renew-basic" onPress={() => renew("basic", 30)} style={styles.planBtn}><Text style={styles.planBtnText}>Básico +30d</Text></Pressable>
-            <Pressable testID="renew-pro" onPress={() => renew("pro", 60)} style={styles.planBtn}><Text style={styles.planBtnText}>Pro +60d</Text></Pressable>
-            <Pressable testID="renew-premium" onPress={() => renew("premium", 90)} style={styles.planBtn}><Text style={styles.planBtnText}>Premium +90d</Text></Pressable>
+            <Pressable testID="renew-30" onPress={() => renew("basic", 30)} style={styles.planBtn}><Text style={styles.planBtnText}>Mensal +30d</Text></Pressable>
+            <Pressable testID="renew-90" onPress={() => renew("pro", 90)} style={styles.planBtn}><Text style={styles.planBtnText}>Trimestral +90d</Text></Pressable>
+            <Pressable testID="renew-180" onPress={() => renew("pro", 180)} style={styles.planBtn}><Text style={styles.planBtnText}>Semestral +180d</Text></Pressable>
+            <Pressable testID="renew-365" onPress={() => renew("premium", 365)} style={styles.planBtn}><Text style={styles.planBtnText}>Anual +365d</Text></Pressable>
           </View>
 
           <Pressable testID="toggle-active-btn" onPress={toggleActive} style={[styles.toggle, { backgroundColor: c.active ? colors.error : colors.success }]}>
