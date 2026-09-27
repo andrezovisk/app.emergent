@@ -1,0 +1,179 @@
+{
+  "app_name": "Multi-Tenant Delivery Marketplace (iFood/Rappi clone)",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A premium, content-first delivery experience that feels fast, intuitive, and visually appetizing, grounded in iOS-native clarity.",
+  "color": {
+    "surface": "#F7F7F7",
+    "onSurface": "#1A1A1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1A1A1A",
+    "surfaceTertiary": "#F0F0F0",
+    "onSurfaceTertiary": "#1A1A1A",
+    "surfaceInverse": "#1A1A1A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#EA1D2C",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#EA1D2C",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#FF4600",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FFEDED",
+    "onBrandTertiary": "#EA1D2C",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#007AFF",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5E5",
+    "borderStrong": "#CCCCCC",
+    "divider": "#EBEBEB",
+    "muted": "#8A8A8E"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical spacing, native iOS feel. Elements have breathing room. Focus on safe areas.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Bottom tab bar over scrolling feed",
+      "Sticky headers above restaurant menus",
+      "Floating Action Buttons (Cart)"
+    ],
+    "dont's": [
+      "Every card in the feed",
+      "Form inputs",
+      "Body content regions"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Onboarding & Role Selection",
+      "purpose": "A polished intro to the platform, capturing the user's role: Customer, Store Partner, or Platform Admin.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "N/A",
+        "error": "Failed to load configs. Retry."
+      },
+      "layout": "Full-bleed image background with a gradient scrim. 3 large choice cards (Customers, Partners, Admin). Buttons should sit at the bottom in the thumb zone."
+    },
+    {
+      "name": "Customer Home Feed",
+      "purpose": "The primary discovery surface for customers to find food, groceries, and pharmacy items.",
+      "states": {
+        "loading": "Skeleton of horizontal carousels and vertical cards.",
+        "empty": "No stores found nearby. Try another address.",
+        "error": "Unable to fetch stores. Retry button."
+      },
+      "layout": "Sticky header (address selector + notification bell). Horizontal scrolling categories (Food, Market, Pharmacy) using circular or square tiles. Interactive hero carousel for promos. Vertical infinite scroll of Store Cards (image, title, rating, distance, price). Use iFood Design System patterns: isolation of components, standard margins (lg)."
+    },
+    {
+      "name": "Store/Restaurant Menu",
+      "purpose": "Showcase a specific store's offerings, allowing users to add items to their cart.",
+      "states": {
+        "loading": "Skeleton cover image and list items",
+        "empty": "This store has no items listed right now.",
+        "error": "Failed to load menu. Retry button."
+      },
+      "layout": "Large cover banner image with a back button. Overlaid store title and metadata (delivery time, minimum order) in a surfaceSecondary card overlapping the banner. Vertical list of products grouped by category. Each product row has a small thumbnail, title, description, and price."
+    },
+    {
+      "name": "Cart & WhatsApp Checkout",
+      "purpose": "Review order details and send the formatted order natively to the store's WhatsApp.",
+      "states": {
+        "loading": "Spinner on the checkout button.",
+        "empty": "Illustration of an empty basket + 'Find food' CTA.",
+        "error": "Failed to generate link. Retry."
+      },
+      "layout": "List of cart items at the top. Order summary (subtotal, fee, total) below. A sticky, bottom-anchored container over a glass blur containing the primary CTA: 'Order via WhatsApp' using brandPrimary (or WhatsApp green conditionally)."
+    },
+    {
+      "name": "Company/Store Panel",
+      "purpose": "Dashboard for stores to manage their menu and view incoming orders.",
+      "states": {
+        "loading": "Skeleton of stats",
+        "empty": "No recent orders.",
+        "error": "Failed to load dashboard. Retry."
+      },
+      "layout": "Tab-based layout (Dashboard, Products, Settings). Dashboard shows large metric cards (Today's Orders, Revenue). Product list should have clear CTAs to add/edit items."
+    },
+    {
+      "name": "Super Admin Dashboard",
+      "purpose": "Platform owner's command center for managing licenses, plans, and tenant companies.",
+      "states": {
+        "loading": "Skeleton of data tables/lists",
+        "empty": "No companies registered yet.",
+        "error": "Failed to load platform stats. Retry."
+      },
+      "layout": "Clean, utility-focused layout. High-level KPI cards at the top. Segmented control to switch between 'Active Companies' and 'Pending Licenses'. List items should clearly show license expiry and tier (Basic/Pro/Premium) via tags."
+    }
+  ],
+  "images": {
+    "onboarding_bg": {
+      "url": "https://images.unsplash.com/photo-1612006567758-1846b36dd130?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwyfHxkZWxpdmVyeSUyMGNvdXJpZXIlMjBzY29vdGVyJTIwYXBwJTIwb25ib2FyZGluZ3xlbnwwfHx8fDE3OTA1NDkxOTR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "delivery courier scooter"
+    },
+    "hero_promo_banner": {
+      "url": "https://images.unsplash.com/photo-1557682260-96773eb01377?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHJlZCUyMG9yYW5nZSUyMGdyYWRpZW50JTIwYmx1ciUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzkwNTQ5MTk0fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "abstract red orange gradient blur background"
+    },
+    "category_food": {
+      "url": "https://images.unsplash.com/photo-1700513970028-d8a630d21c6e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwyfHxmcmVzaCUyMGJ1cmdlciUyMG1lYWwlMjByZXN0YXVyYW50fGVufDB8fHx8MTc5MDU0OTE5NHww&ixlib=rb-4.1.0&q=85",
+      "alt": "fresh burger meal restaurant"
+    },
+    "category_market": {
+      "url": "https://images.unsplash.com/photo-1542838132-92c53300491e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxmcmVzaCUyMGdyb2NlcmllcyUyMG9yZ2FuaWMlMjBwcm9kdWNlfGVufDB8fHx8MTc5MDU0OTE5NHww&ixlib=rb-4.1.0&q=85",
+      "alt": "fresh groceries organic produce"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Follow the '1 iOS-Native Clean' personality rigorously. UI should be premium, minimal, and content-focused with generous margins, avoiding muddy interfaces or chaotic layouts.",
+    "Primary brand color is a vivid Red/Orange (#EA1D2C). Never use Indigo, Violet, or Blues of any kind across the entire app interface.",
+    "Implement the sticky primary CTA over scrolling content pattern for the 'Order via WhatsApp' button on the cart screen and any primary submit button.",
+    "Ensure every image used as a background/cover (e.g., store banners, onboarding background) has the mandatory 3-stop vertical gradient scrim (transparent to surfaceInverse) to guarantee text contrast.",
+    "Build a robust multi-role entry flow. The UI for the Super Admin, Store Partner, and Customer should feel unified by the design system, but structurally adapted for their distinct tasks (Dashboard metrics vs Consumer feed).",
+    "Use proper glassmorphism (expo-blur) for the sticky headers, bottom tab bars, and the cart CTA container to ensure a premium iOS feel.",
+    "Research finding: Model the Customer feed closely to established e-commerce layouts. Isolate UI components and do not mix business logic into basic atoms like buttons or tiles. Leverage horizontal carousels for primary categories and promos, followed by an infinite vertical scroll of stores."
+  ]
+}
