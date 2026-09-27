@@ -158,9 +158,35 @@ class OrderCreate(BaseModel):
     notes: Optional[str] = ""
     address: Optional[str] = ""
     payment_method: Optional[str] = "money"
+    coupon_code: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):
     status: OrderStatus
+
+class CouponCreate(BaseModel):
+    code: str
+    discount_type: Literal["percent", "fixed"] = "percent"
+    value: float
+    min_order: float = 0
+    max_uses: Optional[int] = None
+    expires_at: Optional[str] = None  # ISO
+    active: bool = True
+
+class CouponUpdate(BaseModel):
+    discount_type: Optional[Literal["percent", "fixed"]] = None
+    value: Optional[float] = None
+    min_order: Optional[float] = None
+    max_uses: Optional[int] = None
+    expires_at: Optional[str] = None
+    active: Optional[bool] = None
+
+class CouponValidateIn(BaseModel):
+    company_id: str
+    code: str
+    subtotal: float
+
+class CompanySettings(BaseModel):
+    webhook_url: Optional[str] = None
 
 # ---------- helpers ----------
 def clean(doc: dict) -> dict:
@@ -187,6 +213,45 @@ async def company_license_valid(company_id: str) -> Optional[dict]:
     if exp_dt and exp_dt < now():
         return None
     return c
+
+async def apply_coupon(company_id: str, code: str, subtotal: float) -> tuple[Optional[dict], float, Optional[str]]:
+    """Returns (coupon_doc_or_none, discount_amount, error_message)."""
+    if not code:
+        return None, 0.0, None
+    code_norm = code.strip().upper()
+    coupon = await db.coupons.find_one({"company_id": company_id, "code": code_norm})
+    if not coupon:
+        return None, 0.0, "Cupom não encontrado"
+    if not coupon.get("active", True):
+        return None, 0.0, "Cupom desativado"
+    exp = coupon.get("expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < now():
+                return None, 0.0, "Cupom expirado"
+        except Exception:
+            pass
+    if subtotal < coupon.get("min_order", 0):
+        return None, 0.0, f"Pedido mínimo de R$ {coupon['min_order']:.2f} para este cupom"
+    max_uses = coupon.get("max_uses")
+    if max_uses and coupon.get("uses", 0) >= max_uses:
+        return None, 0.0, "Cupom esgotado"
+    if coupon["discount_type"] == "percent":
+        discount = subtotal * (coupon["value"] / 100.0)
+    else:
+        discount = min(subtotal, coupon["value"])
+    return coupon, round(discount, 2), None
+
+async def send_webhook(company: dict, order: dict):
+    url = (company or {}).get("webhook_url")
+    if not url:
+        return
+    try:
+        import httpx  # local import
+        async with httpx.AsyncClient(timeout=5.0) as cli:
+            await cli.post(url, json={"event": "order.created", "order": order})
+    except Exception as e:
+        log.warning(f"webhook failed for {company.get('id')}: {e}")
 
 # ---------- routes: auth ----------
 @api.get("/")
@@ -333,7 +398,25 @@ async def company_me(user=Depends(allow("company"))):
     c = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
     if not c:
         raise HTTPException(404, "Empresa não encontrada")
+    # attach days_until_expiration
+    exp = c.get("license_expires_at")
+    if exp:
+        try:
+            delta = datetime.fromisoformat(exp) - now()
+            c["days_until_expiration"] = max(0, delta.days)
+            c["license_expired"] = delta.total_seconds() < 0
+        except Exception:
+            c["days_until_expiration"] = None
+            c["license_expired"] = False
     return c
+
+@api.patch("/company/settings")
+async def company_update_settings(body: CompanySettings, user=Depends(allow("company"))):
+    update = {k: v for k, v in body.dict().items() if v is not None}
+    if not update:
+        raise HTTPException(400, "Nada a atualizar")
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": update})
+    return await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
 
 @api.get("/company/stats")
 async def company_stats(user=Depends(allow("company"))):
@@ -396,6 +479,52 @@ async def update_order_status(order_id: str, body: OrderStatusUpdate, user=Depen
         raise HTTPException(404, "Pedido não encontrado")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
+# ---------- routes: coupons (company) ----------
+@api.get("/company/coupons")
+async def list_coupons(user=Depends(allow("company"))):
+    items = await db.coupons.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return items
+
+@api.post("/company/coupons")
+async def create_coupon(body: CouponCreate, user=Depends(allow("company"))):
+    code = body.code.strip().upper()
+    if not code:
+        raise HTTPException(400, "Código inválido")
+    exists = await db.coupons.find_one({"company_id": user["company_id"], "code": code})
+    if exists:
+        raise HTTPException(409, "Já existe um cupom com esse código")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "company_id": user["company_id"],
+        "code": code,
+        "discount_type": body.discount_type,
+        "value": body.value,
+        "min_order": body.min_order,
+        "max_uses": body.max_uses,
+        "expires_at": body.expires_at,
+        "active": body.active,
+        "uses": 0,
+        "created_at": now().isoformat(),
+    }
+    await db.coupons.insert_one(dict(doc))
+    return doc
+
+@api.patch("/company/coupons/{coupon_id}")
+async def update_coupon(coupon_id: str, body: CouponUpdate, user=Depends(allow("company"))):
+    update = {k: v for k, v in body.dict().items() if v is not None}
+    if not update:
+        raise HTTPException(400, "Nada a atualizar")
+    r = await db.coupons.update_one({"id": coupon_id, "company_id": user["company_id"]}, {"$set": update})
+    if not r.matched_count:
+        raise HTTPException(404, "Cupom não encontrado")
+    return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
+
+@api.delete("/company/coupons/{coupon_id}")
+async def delete_coupon(coupon_id: str, user=Depends(allow("company"))):
+    await db.coupons.delete_one({"id": coupon_id, "company_id": user["company_id"]})
+    return {"ok": True}
+
+
 # ---------- routes: customer / public ----------
 @api.get("/stores")
 async def list_stores(segment: Optional[str] = None):
@@ -436,7 +565,11 @@ async def create_order(body: OrderCreate, user=Depends(allow("customer"))):
     if not c:
         raise HTTPException(400, "Loja indisponível")
     subtotal = sum(i.price * i.quantity for i in body.items)
-    total = subtotal + c.get("delivery_fee", 0)
+    delivery_fee = c.get("delivery_fee", 0)
+    coupon_doc, discount, coupon_err = await apply_coupon(body.company_id, body.coupon_code or "", subtotal)
+    if body.coupon_code and coupon_err:
+        raise HTTPException(400, coupon_err)
+    total = max(0.0, subtotal - discount) + delivery_fee
     order = {
         "id": str(uuid.uuid4()),
         "customer_id": user["id"],
@@ -446,7 +579,9 @@ async def create_order(body: OrderCreate, user=Depends(allow("customer"))):
         "company_name": c.get("name"),
         "items": [i.dict() for i in body.items],
         "subtotal": subtotal,
-        "delivery_fee": c.get("delivery_fee", 0),
+        "discount": discount,
+        "coupon_code": coupon_doc["code"] if coupon_doc else None,
+        "delivery_fee": delivery_fee,
         "total": total,
         "notes": body.notes,
         "address": body.address,
@@ -456,7 +591,18 @@ async def create_order(body: OrderCreate, user=Depends(allow("customer"))):
         "created_at": now().isoformat(),
     }
     await db.orders.insert_one(dict(order))
+    if coupon_doc:
+        await db.coupons.update_one({"id": coupon_doc["id"]}, {"$inc": {"uses": 1}})
+    # fire webhook asynchronously
+    asyncio.create_task(send_webhook(c, order))
     return order
+
+@api.post("/coupons/validate")
+async def validate_coupon(body: CouponValidateIn):
+    coupon, discount, err = await apply_coupon(body.company_id, body.code, body.subtotal)
+    if err:
+        raise HTTPException(400, err)
+    return {"code": coupon["code"], "discount": discount, "discount_type": coupon["discount_type"], "value": coupon["value"]}
 
 @api.get("/orders/me")
 async def my_orders(user=Depends(allow("customer"))):
@@ -581,6 +727,7 @@ async def startup():
     await db.companies.create_index("id", unique=True)
     await db.products.create_index("id", unique=True)
     await db.orders.create_index("id", unique=True)
+    await db.coupons.create_index([("company_id", 1), ("code", 1)], unique=True)
     # seed super admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL})
     if not existing:

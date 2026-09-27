@@ -17,13 +17,51 @@ export default function Cart() {
   const [notes, setNotes] = useState("");
   const [payment, setPayment] = useState<"money" | "card" | "pix">("money");
   const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponInfo, setCouponInfo] = useState<{ code: string; discount: number } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
   useEffect(() => {
     if (companyId) api(`/stores/${companyId}`).then(setStore).catch(() => {});
   }, [companyId]);
 
+  // Re-validate when subtotal changes
+  useEffect(() => {
+    if (couponInfo && companyId) {
+      api<{ code: string; discount: number }>("/coupons/validate", {
+        method: "POST",
+        body: JSON.stringify({ company_id: companyId, code: couponInfo.code, subtotal }),
+      }).then(setCouponInfo).catch(() => { setCouponInfo(null); setCouponError("Cupom não aplicável"); });
+    }
+  }, [subtotal, companyId]);
+
+  const applyCoupon = async () => {
+    if (!companyId || !couponCode.trim()) return;
+    setApplyingCoupon(true);
+    setCouponError(null);
+    try {
+      const r = await api<{ code: string; discount: number }>("/coupons/validate", {
+        method: "POST",
+        body: JSON.stringify({ company_id: companyId, code: couponCode.trim().toUpperCase(), subtotal }),
+      });
+      setCouponInfo(r);
+      setCouponCode("");
+    } catch (e: any) {
+      setCouponInfo(null);
+      setCouponError(e.message || "Cupom inválido");
+    }
+    setApplyingCoupon(false);
+  };
+
+  const removeCoupon = () => {
+    setCouponInfo(null);
+    setCouponError(null);
+  };
+
   const deliveryFee = store?.delivery_fee || 0;
-  const total = subtotal + deliveryFee;
+  const discount = couponInfo?.discount || 0;
+  const total = Math.max(0, subtotal - discount) + deliveryFee;
 
   const submit = async () => {
     if (!companyId || items.length === 0) return;
@@ -36,6 +74,7 @@ export default function Cart() {
           company_id: companyId,
           items: items.map((i) => ({ product_id: i.product_id, name: i.name, price: i.price, quantity: i.quantity })),
           notes, address, payment_method: payment,
+          coupon_code: couponInfo?.code || null,
         }),
       });
       // Build WhatsApp message
@@ -49,6 +88,7 @@ export default function Cart() {
         ...items.map((i) => `• ${i.quantity}x ${i.name} - ${formatBRL(i.price * i.quantity)}`),
         "",
         `Subtotal: ${formatBRL(subtotal)}`,
+        discount > 0 ? `Desconto (${couponInfo?.code}): -${formatBRL(discount)}` : "",
         `Taxa entrega: ${formatBRL(deliveryFee)}`,
         `*Total: ${formatBRL(total)}*`,
         `Pagamento: ${payment.toUpperCase()}`,
@@ -134,8 +174,41 @@ export default function Cart() {
           <TextInput testID="notes-input" value={notes} onChangeText={setNotes} placeholder="Ex: sem cebola, troco para R$50" placeholderTextColor={colors.muted} multiline style={[styles.input, { height: 80, textAlignVertical: "top", paddingTop: spacing.md }]} />
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.label}>Cupom de desconto</Text>
+          {couponInfo ? (
+            <View style={styles.appliedCoupon}>
+              <Ionicons name="pricetag" size={18} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.appliedCode}>{couponInfo.code}</Text>
+                <Text style={styles.appliedDiscount}>Desconto: -{formatBRL(couponInfo.discount)}</Text>
+              </View>
+              <Pressable testID="remove-coupon-btn" onPress={removeCoupon} hitSlop={12}>
+                <Ionicons name="close-circle" size={22} color={colors.error} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <TextInput
+                testID="coupon-input"
+                value={couponCode}
+                onChangeText={(v) => setCouponCode(v.toUpperCase())}
+                placeholder="Digite o código"
+                placeholderTextColor={colors.muted}
+                style={[styles.input, { flex: 1 }]}
+                autoCapitalize="characters"
+              />
+              <Pressable testID="apply-coupon-btn" onPress={applyCoupon} disabled={applyingCoupon || !couponCode.trim()} style={[styles.applyBtn, (applyingCoupon || !couponCode.trim()) && { opacity: 0.5 }]}>
+                {applyingCoupon ? <ActivityIndicator color="#FFF" /> : <Text style={styles.applyBtnText}>Aplicar</Text>}
+              </Pressable>
+            </View>
+          )}
+          {couponError && !couponInfo && <Text testID="coupon-error" style={{ color: colors.error, fontSize: 12, marginTop: 6 }}>{couponError}</Text>}
+        </View>
+
         <View style={styles.summary}>
           <Row label="Subtotal" value={formatBRL(subtotal)} />
+          {discount > 0 && <Row label={`Cupom (${couponInfo?.code})`} value={`-${formatBRL(discount)}`} tint={colors.success} />}
           <Row label="Taxa de entrega" value={formatBRL(deliveryFee)} />
           <View style={styles.divider} />
           <Row label="Total" value={formatBRL(total)} bold />
@@ -156,11 +229,11 @@ export default function Cart() {
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function Row({ label, value, bold, tint }: { label: string; value: string; bold?: boolean; tint?: string }) {
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-      <Text style={{ color: bold ? colors.onSurface : colors.muted, fontSize: bold ? 16 : 14, fontWeight: bold ? "800" : "500" }}>{label}</Text>
-      <Text style={{ color: colors.onSurface, fontSize: bold ? 16 : 14, fontWeight: bold ? "800" : "600" }}>{value}</Text>
+      <Text style={{ color: bold ? colors.onSurface : (tint || colors.muted), fontSize: bold ? 16 : 14, fontWeight: bold ? "800" : "500" }}>{label}</Text>
+      <Text style={{ color: tint || colors.onSurface, fontSize: bold ? 16 : 14, fontWeight: bold ? "800" : "600" }}>{value}</Text>
     </View>
   );
 }
@@ -187,6 +260,11 @@ const styles = StyleSheet.create({
   stickyBar: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceSecondary, paddingHorizontal: spacing.xl, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
   wpp: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: "#25D366", height: 54, borderRadius: radius.md },
   wppText: { color: "#FFF", fontWeight: "800", fontSize: 15 },
+  applyBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.lg, height: 46, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  applyBtnText: { color: colors.onBrandPrimary, fontWeight: "700" },
+  appliedCoupon: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: "#E8F8ED", borderWidth: 1, borderColor: colors.success, padding: spacing.md, borderRadius: radius.md },
+  appliedCode: { fontSize: 15, fontWeight: "800", color: colors.success, letterSpacing: 1 },
+  appliedDiscount: { fontSize: 12, color: colors.onSurface, marginTop: 2 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xxl },
   emptyText: { color: colors.muted, fontSize: 16 },
   emptyBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.xl, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center", marginTop: spacing.md },

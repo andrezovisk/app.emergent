@@ -42,6 +42,7 @@ const COMPANY: Section[] = [
   { icon: "stats-chart", title: "2. Painel principal (Dashboard)", body: [
     "Ao entrar você vê 4 indicadores: pedidos hoje, faturamento total, total de pedidos e quantidade de produtos.",
     "Um banner mostra seu plano atual (Mensal, Trimestral, Semestral ou Anual) e a data de expiração.",
+    "Se faltar 7 dias ou menos para expirar, o banner fica amarelo alertando você a renovar.",
     "Use puxar para atualizar (pull-to-refresh) para recarregar os dados.",
   ]},
   { icon: "pricetags", title: "3. Cadastro de produtos", body: [
@@ -55,13 +56,25 @@ const COMPANY: Section[] = [
     "Toque em um pedido para avançar o status: Recebido → Confirmado → Preparando → Entregue.",
     "O cliente vê a atualização em tempo real no app.",
   ]},
-  { icon: "code-slash", title: "5. Integração com seu ERP (API)", body: [
-    "Na aba Produtos toque em Integração ERP para ver sua chave (X-API-Key) e a documentação.",
+  { icon: "pricetag", title: "5. Cupons de desconto", body: [
+    "Acesse Configurações → Cupons de desconto para criar cupons exclusivos da sua loja.",
+    "Escolha entre percentual (ex: 10% off) ou valor fixo (ex: R$ 5 off).",
+    "Defina pedido mínimo, limite de usos e data de expiração se desejar.",
+    "O cliente digita o código no carrinho — validamos automaticamente antes de aplicar.",
+  ]},
+  { icon: "cloud-upload", title: "6. Webhook de novos pedidos", body: [
+    "Em Configurações informe a URL do seu ERP no campo Webhook.",
+    "Toda vez que um novo pedido chegar, enviamos um POST com {event:'order.created', order:{...}} para essa URL.",
+    "Assim você não precisa ficar consultando a API para saber de novos pedidos.",
+    "Deixe em branco para desativar. Falhas são registradas mas não bloqueiam o pedido.",
+  ]},
+  { icon: "code-slash", title: "7. Integração com seu ERP (API)", body: [
+    "Toque no ícone </> no topo do painel para ver sua chave (X-API-Key) e a documentação.",
     "Endpoints principais: POST /api/erp/products/bulk (importa produtos), GET /api/erp/orders (baixa pedidos), PATCH /api/erp/orders/{id}/status (atualiza status).",
     "Use o campo external_id nos produtos para o ERP fazer upsert (cria se novo, atualiza se existir).",
     "Funciona com qualquer ERP: online ou offline (basta enviar via HTTPS quando conectar).",
   ]},
-  { icon: "shield-checkmark", title: "6. Sobre sua licença", body: [
+  { icon: "shield-checkmark", title: "8. Sobre sua licença", body: [
     "As licenças são gerenciadas pelo administrador da plataforma nos planos Mensal, Trimestral, Semestral e Anual.",
     "Quando faltar poucos dias entre em contato com o administrador para renovar.",
     "Se a licença expirar, sua loja fica automaticamente oculta para os clientes até a renovação.",
@@ -143,7 +156,7 @@ export default function Manual() {
           <View style={styles.heroLogo}>
             <Ionicons name="bicycle" size={26} color={colors.onBrandPrimary} />
           </View>
-          <Text style={styles.heroTitle}>Bem-vindo ao Consumidor</Text>
+          <Text style={styles.heroTitle}>Bem-vindo ao Brocado</Text>
           <Text style={styles.heroSub}>
             Plataforma multi-empresa de delivery com pedidos direto no WhatsApp. Escolha abaixo o manual que combina com você.
           </Text>

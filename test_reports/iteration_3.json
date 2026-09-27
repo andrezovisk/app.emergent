@@ -1,0 +1,48 @@
+{
+  "summary": "Backend-only testing of new features: coupons per company, webhook_url on company settings, and license expiration warning fields on GET /api/company/me. Created /app/backend/tests/test_coupons_webhook.py with 23 tests, all passing. Coverage: GET /api/company/me returns days_until_expiration (int, ~30 for 30-day license) and license_expired (bool, false); PATCH /api/company/settings webhook_url is persisted and reflected in /company/me; POST /api/company/coupons uppercases codes, returns 409 on duplicate (case-insensitive via uppercased code); GET/PATCH/DELETE coupons CRUD works; POST /api/coupons/validate returns correct discount for percent (percent*subtotal) and fixed (min(subtotal, value)) types; validate returns 400 for unknown, inactive, expired (ISO past date), below-min_order, and max_uses-reached coupons; POST /api/orders with coupon_code applies discount (total = max(0, subtotal-discount) + delivery_fee), sets coupon_code/discount fields on order response, and increments coupon.uses atomically; POST /api/orders with invalid coupon_code returns 400 AND no order is persisted; webhook to unreachable URL (http://127.0.0.1:1) does NOT fail order creation (asyncio.create_task + swallowed exceptions). Full regression: 73/73 tests pass (29 backend_test.py + 21 test_erp.py + 23 test_coupons_webhook.py).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/coupons/validate", "issue": "When expires_at is malformed ISO string, the try/except in apply_coupon silently ignores it (bare except: pass) and treats the coupon as non-expired. Low risk since server always writes ISO strings, but if a client PATCHes expires_at to garbage the coupon becomes effectively never-expiring."},
+      {"endpoint": "POST /api/company/coupons", "issue": "No validation on 'value' (accepts negative, zero, or >100 for percent). Consider Pydantic constraints: value > 0 and value <= 100 for percent type."},
+      {"endpoint": "POST /api/orders", "issue": "Coupon uses counter is incremented via $inc AFTER max_uses check, but two concurrent orders could both pass the check and both increment (race condition). For strict enforcement, use findOneAndUpdate with {uses: {$lt: max_uses}} filter. Not observed in tests but worth noting."},
+      {"endpoint": "POST /api/coupons/validate", "issue": "Endpoint is public (no auth) — anyone can enumerate valid coupon codes for a given company by brute-force. Consider rate limiting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_coupons_webhook.py",
+    "/app/backend/tests/test_erp.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_coupons_webhook.xml",
+    "/app/test_reports/pytest/pytest_all.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: add Pydantic Field constraints on CouponCreate.value (gt=0, and le=100 when discount_type=percent).",
+    "Optional: harden coupon max_uses against concurrent orders via atomic findOneAndUpdate.",
+    "Optional: rate-limit or require authentication on POST /api/coupons/validate to prevent code enumeration."
+  ],
+  "critical_code_review_comments": [
+    "apply_coupon() correctly returns (coupon, discount, error) tuple with proper ordering of checks: existence -> active -> expiration -> min_order -> max_uses. Good.",
+    "POST /api/orders correctly guards: `if body.coupon_code and coupon_err: raise 400` — so passing no coupon_code does NOT fail even if apply_coupon returns None. Correct.",
+    "send_webhook() uses asyncio.create_task + swallowed exception with 5s httpx timeout — order creation is decoupled from webhook success. Verified.",
+    "GET /api/company/me computes days_until_expiration = max(0, delta.days) and license_expired = delta.total_seconds() < 0. Correct semantics.",
+    "Coupon code is normalized to uppercase on BOTH insert AND lookup (strip().upper() in create_coupon and apply_coupon). Duplicate check on the pre-normalized DB record is correct — verified with 409.",
+    "Compound unique index on coupons(company_id, code) is created on startup (line 730) — good for scale and race-safety on duplicates.",
+    "Order response includes discount and coupon_code fields regardless of whether a coupon was used (0.0 / None). Good for client consumption."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_coupons_webhook.py (created)"
+  ],
+  "success_rate": {"backend": "100% (73/73: 23 new coupon/webhook + 21 ERP regression + 29 core regression)", "frontend": "N/A (not requested)"},
+  "seed_data_creation": "Each test run creates one TEST_-prefixed company, its owner, a customer, one product, and 5-7 coupons. All artifacts are torn down in test_cleanup_delete_company which cascades users/products/coupons. No pollution between runs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Three self-cleaning pytest suites in /app/backend/tests/: backend_test.py (29 core auth+CRUD+order lifecycle), test_erp.py (21 ERP + api-key + license options), test_coupons_webhook.py (23 coupons + webhook + expiration warning). Run all: `pytest /app/backend/tests/ -v --junitxml=...`. BASE_URL sourced from EXPO_PUBLIC_BACKEND_URL. Admin: admin@delivery.com / Admin@12345. All 73 pass in ~85s.",
+  "rca_of_issue": "No functional issues — all new endpoints (coupons CRUD, /coupons/validate, webhook_url settings, days_until_expiration/license_expired on /company/me) behave per spec including all negative validation paths (unknown/inactive/expired/min_order/max_uses -> 400, duplicate -> 409). Webhook best-effort semantics verified: order still created when webhook_url is unreachable."
+}

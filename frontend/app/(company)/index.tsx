@@ -8,7 +8,7 @@ import { useAuth } from "@/src/auth";
 import { api } from "@/src/api";
 import { formatBRL, statusLabel } from "@/src/format";
 
-type Company = { id: string; name: string; plan: string; license_expires_at: string; active: boolean };
+type Company = { id: string; name: string; plan: string; license_expires_at: string; active: boolean; days_until_expiration?: number; license_expired?: boolean; webhook_url?: string | null };
 type Stats = { total_orders: number; today_orders: number; products: number; revenue: number };
 type Order = { id: string; customer_name: string; total: number; status: string; created_at: string; items: any[] };
 
@@ -62,6 +62,9 @@ export default function CompanyHome() {
         <Pressable testID="manual-btn" onPress={() => router.push("/manual?role=company" as any)} style={styles.iconBtn} hitSlop={12}>
           <Ionicons name="help-circle-outline" size={22} color={colors.onSurface} />
         </Pressable>
+        <Pressable testID="settings-btn" onPress={() => router.push("/(company)/settings" as any)} style={styles.iconBtn} hitSlop={12}>
+          <Ionicons name="settings-outline" size={20} color={colors.onSurface} />
+        </Pressable>
         <Pressable testID="erp-btn" onPress={() => router.push("/(company)/erp" as any)} style={styles.iconBtn} hitSlop={12}>
           <Ionicons name="code-slash" size={20} color={colors.onSurface} />
         </Pressable>
@@ -86,9 +89,27 @@ export default function CompanyHome() {
               <Stat label="Produtos" value={String(stats?.products || 0)} icon="pricetag" tint={colors.brandPrimary} />
             </View>
 
-            <View style={styles.licenseBanner}>
-              <Ionicons name="shield-checkmark" size={18} color={colors.brandPrimary} />
-              <Text style={styles.licenseText}>Plano {me?.plan?.toUpperCase()} · expira em {licenseExpires}</Text>
+            <View style={[
+              styles.licenseBanner,
+              me?.license_expired && { backgroundColor: "#FDECEA", borderWidth: 1, borderColor: colors.error },
+              !me?.license_expired && (me?.days_until_expiration ?? 999) <= 7 && { backgroundColor: "#FFF4D6", borderWidth: 1, borderColor: colors.warning },
+            ]}>
+              <Ionicons
+                name={me?.license_expired ? "warning" : (me?.days_until_expiration ?? 999) <= 7 ? "alert-circle" : "shield-checkmark"}
+                size={18}
+                color={me?.license_expired ? colors.error : (me?.days_until_expiration ?? 999) <= 7 ? colors.warning : colors.brandPrimary}
+              />
+              <Text style={[
+                styles.licenseText,
+                me?.license_expired && { color: colors.error },
+                !me?.license_expired && (me?.days_until_expiration ?? 999) <= 7 && { color: "#7A5B00" },
+              ]}>
+                {me?.license_expired
+                  ? `Licença EXPIRADA em ${licenseExpires}. Contate o administrador.`
+                  : (me?.days_until_expiration ?? 999) <= 7
+                  ? `Licença vence em ${me?.days_until_expiration} dia(s) (${licenseExpires}). Renove com o administrador.`
+                  : `Plano ${me?.plan?.toUpperCase()} · expira em ${licenseExpires}`}
+              </Text>
             </View>
 
             <View style={styles.tabs}>

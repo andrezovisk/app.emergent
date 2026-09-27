@@ -27,7 +27,7 @@ export default function Onboarding() {
             <View style={styles.logoBadge}>
               <Ionicons name="bicycle" size={22} color={colors.onBrandPrimary} />
             </View>
-            <Text style={styles.brandText}>Consumidor</Text>
+            <Text style={styles.brandText}>Brocado</Text>
           </View>
           <Text style={styles.tagline}>Peça de qualquer lugar,{"\n"}direto pelo WhatsApp</Text>
         </View>
