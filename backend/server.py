@@ -187,6 +187,8 @@ class CouponValidateIn(BaseModel):
 
 class CompanySettings(BaseModel):
     webhook_url: Optional[str] = None
+    welcome_coupon_code: Optional[str] = None
+    welcome_coupon_enabled: Optional[bool] = None
 
 # ---------- helpers ----------
 def clean(doc: dict) -> dict:
@@ -523,6 +525,116 @@ async def update_coupon(coupon_id: str, body: CouponUpdate, user=Depends(allow("
 async def delete_coupon(coupon_id: str, user=Depends(allow("company"))):
     await db.coupons.delete_one({"id": coupon_id, "company_id": user["company_id"]})
     return {"ok": True}
+
+@api.get("/company/coupons/stats")
+async def coupons_stats(user=Depends(allow("company"))):
+    """Retorna estatísticas de vendas por cupom (pedidos, faturamento e desconto total)."""
+    cid = user["company_id"]
+    coupons = await db.coupons.find({"company_id": cid}, {"_id": 0}).to_list(500)
+    pipe = [
+        {"$match": {"company_id": cid, "coupon_code": {"$ne": None}, "status": {"$ne": "cancelled"}}},
+        {"$group": {"_id": "$coupon_code", "orders": {"$sum": 1}, "revenue": {"$sum": "$total"}, "discount": {"$sum": "$discount"}}},
+    ]
+    agg = {row["_id"]: row async for row in db.orders.aggregate(pipe)}
+    result = []
+    for c in coupons:
+        code = c["code"]
+        stats = agg.get(code, {"orders": 0, "revenue": 0, "discount": 0})
+        result.append({
+            "id": c["id"], "code": code, "active": c.get("active", True),
+            "discount_type": c["discount_type"], "value": c["value"],
+            "uses": c.get("uses", 0),
+            "orders": stats["orders"], "revenue": stats["revenue"], "discount_total": stats["discount"],
+        })
+    result.sort(key=lambda x: x["revenue"], reverse=True)
+    return result
+
+@api.get("/company/orders/{order_id}/receipt")
+async def order_receipt(order_id: str, width: int = 42, user=Depends(allow("company"))):
+    """Retorna recibo em texto puro pronto para impressora térmica (58mm~32 chars, 80mm~42 chars)."""
+    o = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not o:
+        raise HTTPException(404, "Pedido não encontrado")
+    c = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+    w = max(24, min(64, width))
+    def center(s: str) -> str:
+        s = s[:w]
+        return s.center(w)
+    def line(ch: str = "-") -> str:
+        return ch * w
+    def kv(label: str, value: str) -> str:
+        space = w - len(label) - len(value)
+        if space < 1:
+            return f"{label} {value}"
+        return f"{label}{' ' * space}{value}"
+    def money(v: float) -> str:
+        return f"R$ {v:.2f}".replace(".", ",")
+    lines: List[str] = []
+    lines.append(center((c or {}).get("name", "PEDIDO")))
+    if c and c.get("address"):
+        lines.append(center(c["address"][:w]))
+    lines.append(line("="))
+    lines.append(f"Pedido: #{o['id'][:8]}")
+    try:
+        dt = datetime.fromisoformat(o["created_at"]).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        dt = o.get("created_at", "")
+    lines.append(f"Data:   {dt}")
+    lines.append(f"Cliente: {o.get('customer_name','')}")
+    if o.get("customer_phone"):
+        lines.append(f"Fone:    {o['customer_phone']}")
+    if o.get("address"):
+        lines.append(f"Endereco: {o['address']}"[:w])
+    lines.append(line("-"))
+    lines.append("ITENS")
+    lines.append(line("-"))
+    for it in o.get("items", []):
+        name = f"{it['quantity']}x {it['name']}"[:w]
+        lines.append(name)
+        lines.append(kv(f"   {money(it['price'])} x {it['quantity']}", money(it['price'] * it['quantity'])))
+    lines.append(line("-"))
+    lines.append(kv("Subtotal", money(o.get("subtotal", 0))))
+    if o.get("discount", 0) > 0:
+        lines.append(kv(f"Cupom {o.get('coupon_code','')}", f"-{money(o['discount'])}"))
+    lines.append(kv("Taxa entrega", money(o.get("delivery_fee", 0))))
+    lines.append(line("="))
+    lines.append(kv("TOTAL", money(o.get("total", 0))))
+    lines.append(f"Pagamento: {(o.get('payment_method') or '').upper()}")
+    if o.get("notes"):
+        lines.append(line("-"))
+        lines.append("Obs: " + o["notes"])
+    lines.append("")
+    lines.append(center("Obrigado pela preferencia!"))
+    lines.append("")
+    text = "\n".join(lines)
+    return {"width": w, "text": text}
+
+@api.get("/stores/{company_id}/welcome-coupon")
+async def get_welcome_coupon(company_id: str, user=Depends(allow("customer"))):
+    """Retorna cupom de boas-vindas se o cliente ainda não tem pedidos nessa loja."""
+    c = await company_license_valid(company_id)
+    if not c:
+        return {"eligible": False}
+    if not c.get("welcome_coupon_enabled") or not c.get("welcome_coupon_code"):
+        return {"eligible": False}
+    # customer has prior orders at this store?
+    prior = await db.orders.find_one({"company_id": company_id, "customer_id": user["id"]})
+    if prior:
+        return {"eligible": False}
+    coupon = await db.coupons.find_one(
+        {"company_id": company_id, "code": c["welcome_coupon_code"].strip().upper(), "active": True},
+        {"_id": 0},
+    )
+    if not coupon:
+        return {"eligible": False}
+    return {"eligible": True, "code": coupon["code"], "discount_type": coupon["discount_type"], "value": coupon["value"], "min_order": coupon.get("min_order", 0)}
+
+@api.get("/orders/me/{order_id}")
+async def get_my_order(order_id: str, user=Depends(allow("customer"))):
+    o = await db.orders.find_one({"id": order_id, "customer_id": user["id"]}, {"_id": 0})
+    if not o:
+        raise HTTPException(404, "Pedido não encontrado")
+    return o
 
 
 # ---------- routes: customer / public ----------

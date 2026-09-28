@@ -12,10 +12,17 @@ type Coupon = {
   min_order: number; max_uses: number | null; expires_at: string | null; active: boolean; uses: number;
 };
 
+type CouponStat = {
+  id: string; code: string; active: boolean; discount_type: "percent" | "fixed"; value: number;
+  uses: number; orders: number; revenue: number; discount_total: number;
+};
+
 export default function Coupons() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Coupon[]>([]);
+  const [stats, setStats] = useState<CouponStat[]>([]);
+  const [tab, setTab] = useState<"list" | "stats">("list");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [f, setF] = useState({ code: "", discount_type: "percent" as "percent" | "fixed", value: "", min_order: "0", max_uses: "", expires_at: "" });
@@ -24,8 +31,12 @@ export default function Coupons() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api<Coupon[]>("/company/coupons");
-      setItems(data);
+      const [c, s] = await Promise.all([
+        api<Coupon[]>("/company/coupons"),
+        api<CouponStat[]>("/company/coupons/stats"),
+      ]);
+      setItems(c);
+      setStats(s);
     } catch (e) { console.log(e); }
   }, []);
 
